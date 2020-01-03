@@ -11,6 +11,6 @@ Generic Minimax and Monte Carlo Tree Search implementation in Python.
 ### Usage Example
 See examples in:
 - [four_in_a_row.py](four_in_a_row.py "four_in_a_row.py") 
-- [five_in_a_row.py](five_in_a_row.py "five_in_a_row.py") 
+- [five_in_row.py](five_in_row.py "five_in_row.py") 
 - [tic_tac_toe.py](tic_tac_toe.py "tic_tac_toe.py") 
 - [huge_tic_tac_toe.py](huge_tic_tac_toe.py "huge_tic_tac_toe.py") 
