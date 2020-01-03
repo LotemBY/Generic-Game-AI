@@ -2,7 +2,7 @@
 Generic Minimax and Monte Carlo Tree Search implementation in Python.
 
 ## Usage
-1. Inherit the abstract GameState & Player classes from game.py
+1. Inherit the abstract GameState & Player classes from game.py(game.py "game.py") 
 2. Get out-of-the-box AI player from [carlo_monte.py](carlo_monte.py "carlo_monte.py") 
 <br />(Or implement an evaluation function and get an optimal player from [minimax.py](minimax.py "minimax.py"))
 3. ???
