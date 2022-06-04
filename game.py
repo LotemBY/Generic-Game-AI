@@ -17,6 +17,9 @@ class Player(abc.ABC):
     def notify_bad_move(self):
         pass
 
+    def notify_game_end(self, state):
+        pass
+
 
 class GameState(abc.ABC):
     # @abc.abstractstaticmethod
@@ -25,6 +28,7 @@ class GameState(abc.ABC):
     def __init__(self, players, player_index=0):
         self.m_players = players
         self.m_curr_player_index = player_index
+        self.m_moves = None
 
     def get_curr_player(self):
         return self.m_players[self.m_curr_player_index]
@@ -44,6 +48,9 @@ class GameState(abc.ABC):
     @abc.abstractmethod
     def get_moves(self) -> typing.Generator[int, None, None]: pass
 
+    def no_moves(self):
+        return to_non_empty(self.get_moves()) is None
+
     @abc.abstractmethod
     def move(self, move) -> 'GameState': pass
 
@@ -58,7 +65,7 @@ class Game:
         self.m_winner: Player = None
 
     def _is_tie(self):
-        return to_non_empty(self.m_state.get_moves()) is None
+        return self.m_state.no_moves()
 
     def _is_game_over(self):
         self.m_winner = self.m_state.get_winner()
@@ -84,3 +91,6 @@ class Game:
         while not self._is_game_over():
             self._do_next_move()
             yield self.m_state
+
+        for player in self.m_state.m_players:
+            player.notify_game_end(self.m_state)

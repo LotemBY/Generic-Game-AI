@@ -56,9 +56,9 @@ def minimax_alpha_beta(moves_log, state: game.GameState, max_player: MinimaxPlay
             elif recursive_score == best_score:
                 best_moves.append(move)
 
-        if alpha >= beta:
+        if alpha > beta:
             break
-    #
+
     # print(f'Depth {depth}/{max_depth}: [{",".join(str(i) for i in moves_log)}] | '
     #       f'As {state.get_curr_player().get_char()}, '
     #       f'my best moves are: [{",".join(str(i) for i in best_moves)}] with score: {best_score}')

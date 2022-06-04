@@ -1,5 +1,6 @@
 import math
 import random
+import threading
 import time
 
 from game import GameState, Player
@@ -21,7 +22,7 @@ def timeit(method):
 
 
 SEARCH_CONST = 2  # math.sqrt(2)
-INF = 0xFFFF  # float("inf")
+INF = 0xFFFFFFFF  # float("inf")
 TIE_SCORE = 0
 
 g_depths = []
@@ -29,32 +30,43 @@ g_statics = 0
 
 
 class CarloMontePlayer(Player):
-    def __init__(self, iterations=2000):
+    def __init__(self, iterations=2000, secs=None, think_ahead=False):
         self.iterations = iterations
+        self.secs = secs
+        self.think_ahead = think_ahead
         self.root = None
 
     def get_root_for_state(self, state):
-        if self.root is None:
-            return CarloMonteTreeNode(state)
+        if self.root is not None:
+            for child in self.root.childs:
+                if child.state == state:
+                    new_root = child
+                    new_root.parent = None
+                    new_root.depth = 0
+                    return new_root
 
-        for child in self.root.childs:
-            if child.state == state:
-                new_root = child
-                new_root.parent = None
-                new_root.depth = 0
-                return new_root
-
-        return CarloMonteTreeNode(state)
+        return CarloMonteTreeNode(state, player=self)
 
     def get_move(self, state):
+        if self.root:
+            self.root.set_stop_calc()
+
         self.root = self.get_root_for_state(state)
-        self.root = self.root.calc_best_move(self.iterations)
+
+        if self.secs:
+            self.root = self.root.calc_best_move_in_time(self.secs)
+        else:
+            self.root = self.root.calc_best_move(self.iterations)
+
+        if self.think_ahead:
+            self.root.calc_best_move_until_stop()
+
         return self.root.move
 
 
 class CarloMonteTreeNode:
     def __init__(self, state: GameState,
-                 depth: int = 0, max_player: bool = True, move=None, parent: 'CarloMonteTreeNode' = None) -> None:
+                 depth: int = 0, max_player: bool = True, move=None, parent: 'CarloMonteTreeNode' = None, player=None) -> None:
         self.max_player = max_player
         self.depth = depth
         self.state = state
@@ -65,6 +77,9 @@ class CarloMonteTreeNode:
         self.childs: [GameState] = []
         self.static_value = None
         self.selection_func = max if self.max_player else min
+        self.player = player
+
+        self.stop_calc = False
 
     def get_score(self) -> float:
         if self.static_value is not None:
@@ -84,6 +99,9 @@ class CarloMonteTreeNode:
         if self.visits == 0:
             return INF if self.parent.max_player else -INF
 
+        if self.parent is None:
+            print(self)
+
         # Avg score + How much did we explore here
         return self.get_score() / 1000 + \
                (SEARCH_CONST if self.parent.max_player else -SEARCH_CONST) * \
@@ -98,8 +116,13 @@ class CarloMonteTreeNode:
     def create_childs(self):
         assert not self.childs, 'Fuck i have childs :('
 
-        self.childs = [CarloMonteTreeNode(self.state.move(move), self.depth + 1, not self.max_player, move, self) for
-                       move in self.state.get_moves()]
+        self.childs = [CarloMonteTreeNode(self.state.move(move),
+                                          self.depth + 1,
+                                          not self.max_player,
+                                          move,
+                                          self,
+                                          self.player)
+                       for move in self.state.get_moves()]
 
     # @timeit
     def simulate(self) -> float:
@@ -107,15 +130,11 @@ class CarloMonteTreeNode:
 
         curr_state = self.state
         ret = None
-        for i in range(100):
+        for i in range(INF):
             winner = curr_state.get_winner()
             if winner is not None:
-                # TODO: consider depth - maybe in the eval function
-                # print(curr_state)
-                # print(f'Winner: {winner} - Eval: {curr_state.eval()}')
                 g_depths.append(i)
-                ret = 1000 - i - self.depth if isinstance(winner, CarloMontePlayer) else - 1000 + i + self.depth
-                # print(f'Score: {ret}')
+                ret = 1000 - i - self.depth if winner == self.player else - 1000 + i + self.depth
                 break
 
             moves = list(curr_state.get_moves())
@@ -126,7 +145,8 @@ class CarloMonteTreeNode:
                 ret = TIE_SCORE
                 break
 
-            curr_state = curr_state.move(random.choice(moves))
+            move = random.choice(moves)
+            curr_state = curr_state.move(move)
             assert curr_state is not None
 
         # te = time.time()
@@ -146,8 +166,7 @@ class CarloMonteTreeNode:
         winner = self.state.get_winner()
         if winner is not None:
             """ Terminal state """
-            # self.state.eval()
-            self.static_value = 1000 - self.depth if isinstance(winner, CarloMontePlayer) else - 1000 + self.depth
+            self.static_value = 1000 - self.depth if winner == self.player else - 1000 + self.depth
             to_simulate = self
             score = self.static_value
             g_statics += 1
@@ -186,6 +205,9 @@ class CarloMonteTreeNode:
         for iterations_counter in range(iterations_num):
             next_node = self.next_node()
             next_node.expend_simulate_update()
+            if self.stop_calc:
+                print(f'Simulated {iterations_counter} iterations.')
+                break
 
             # if iterations_counter == iterations_num - 1 or iterations_counter % 200 == 0:
             #     childs_str = "\n\t".join(repr(child) for child in self.childs)
@@ -201,14 +223,29 @@ class CarloMonteTreeNode:
             #     break
 
         best_move = max(self.childs, key=lambda node: node.get_score())
-        #
-        # print(f'Self: {self}')
-        # total_visits = sum(child.visits for child in self.childs)
-        # print(f'Total visits: {total_visits}')
-        # print(f'Statics: {g_statics}')
-        # print(f'Chose {best_move}.')
-        # print(f'Avg Depth: {sum(g_depths) / len(g_depths)}')
+
+        print(f'Self: {self}')
+        total_visits = sum(child.visits for child in self.childs)
+        print(f'Total visits: {total_visits}')
+        print(f'Statics: {g_statics}')
+        print(f'Chose {best_move}.')
+        if g_depths:
+            print(f'Avg Depth: {sum(g_depths) / len(g_depths)}')
+        childs_str = "\n\t".join(repr(child) for child in self.childs)
+        print(f'{iterations_counter}:\n\t{childs_str}')
         return best_move
+
+    def set_stop_calc(self):
+        self.stop_calc = True
+
+    def calc_best_move_in_time(self, secs, max_iterations_num=INF):
+        self.stop_calc = False
+        threading.Timer(secs, self.set_stop_calc).start()
+        return self.calc_best_move(max_iterations_num)
+
+    def calc_best_move_until_stop(self):
+        self.stop_calc = False
+        threading.Thread(target=self.calc_best_move, args=[INF]).start()
 
     def __repr__(self):
         if self.static_value:
